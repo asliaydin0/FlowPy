@@ -1,55 +1,54 @@
+# main.py
+# ──────────────────────────────────────────────────────────────────────
+# FlowPy — Görsel Algoritma Yorumlayıcı Motor
+# Ana giriş noktası: UI yükleme, sahne bağlama, sinyal/slot kurulumu.
+# ──────────────────────────────────────────────────────────────────────
+
 import sys
 import os
-from PyQt5.QtWidgets import QApplication, QMainWindow, QGraphicsScene
-from mainwindow import Ui_MainWindow
-from node import BaseNode
 
-plugin_path = os.path.join(os.path.dirname(__file__), "venv", "Lib", "site-packages", "PyQt5", "Qt5", "plugins", "platforms")
-os.environ['QT_QPA_PLATFORM_PLUGIN_PATH'] = plugin_path
+from PyQt5.QtWidgets import QApplication, QMainWindow
+from PyQt5 import uic
+
+from core.registry import NodeRegistry
+from core.interpreter import Interpreter
+from views.canvas import FlowScene
+
 
 class FlowPyApp(QMainWindow):
+    """Ana pencere — UI dosyasını yükler, sahneyi ve yorumlayıcıyı bağlar."""
+
     def __init__(self):
         super().__init__()
-        self.ui = Ui_MainWindow()
-        self.ui.setupUi(self)
-        self.setWindowTitle("FlowPy - Sürükle Bırak Testi")
-        
-        # 1. Tuvali ve Sahneyi Oluştur
-        self.scene = QGraphicsScene()
-        self.ui.graphicsView.setScene(self.scene)
-        self.scene.setSceneRect(-500, -500, 1000, 1000)
 
-        # 2. Tuvalin dışarıdan gelen sürüklemeleri kabul etmesini sağla
-        self.ui.graphicsView.setAcceptDrops(True)
+        # ── 1. UI dosyasını yükle ────────────────────────────────────
+        ui_path = os.path.join(os.path.dirname(__file__), "views", "mainwindow.ui")
+        uic.loadUi(ui_path, self)
 
-        # 3. Sürüklenen nesne tuvalin üzerine geldiğinde tetiklenen fonksiyon
-        def dragEnterEvent(event):
-            # Eğer sürüklenen şey bir metin (text) içeriyorsa kabul et
-            if event.mimeData().hasText():
-                event.accept()
-            else:
-                event.ignore()
+        # ── 2. Merkezi kayıt defterini oluştur ──────────────────────
+        self.registry = NodeRegistry()
 
-        # 4. Nesne fare tuşu bırakıldığında (Drop) tetiklenen fonksiyon
-        def dropEvent(event):
-            # Panelden sürüklenen yazıyı alıyoruz (Örn: "İşlem Düğümü")
-            node_text = event.mimeData().text()
-            
-            # Farenin bırakıldığı ekran koordinatını, sahne koordinatına çeviriyoruz
-            view_pos = event.pos()
-            scene_pos = self.ui.graphicsView.mapToScene(view_pos)
-            
-            # Seçilen yazıya göre yeni bir düğüm üretip sahneye ekliyoruz
-            yeni_dugum = BaseNode(node_text)
-            yeni_dugum.setPos(scene_pos)
-            self.scene.addItem(yeni_dugum)
-            
-            event.accept()
+        # ── 3. Sahneyi oluştur ve graphicsView'a bağla ──────────────
+        self.scene = FlowScene(registry=self.registry)
+        self.graphicsView.setScene(self.scene)
+        self.graphicsView.setAcceptDrops(True)
 
-        # 5. Yazdığımız bu fonksiyonları senin QGraphicsView'a bağlıyoruz
-        self.ui.graphicsView.dragEnterEvent = dragEnterEvent
-        self.ui.graphicsView.dragMoveEvent = dragEnterEvent
-        self.ui.graphicsView.dropEvent = dropEvent
+        # ── 4. Yorumlayıcıyı oluştur ────────────────────────────────
+        self.interpreter = Interpreter(registry=self.registry)
+
+        # ── 5. Sinyal / Slot bağlantıları ────────────────────────────
+        #   Interpreter log sinyali → konsol alanına yaz
+        self.interpreter.log_message.connect(self.consoleOutput.append)
+
+        #   Menü: Çalıştır → Akışı Çalıştır  (Ctrl+R)
+        self.actionRunFlow.triggered.connect(self.interpreter.run_flow)
+
+        # ── 6. Pencere başlığı & durum çubuğu ───────────────────────
+        self.setWindowTitle("FlowPy — Görsel Algoritma Yorumlayıcı")
+        self.statusbar.showMessage("Hazır — Düğümleri sol panelden tuvale sürükleyin.")
+
+
+# ═══════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
